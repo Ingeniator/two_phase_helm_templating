@@ -21,6 +21,8 @@ release:
 	rm -rf release
 	mkdir -p release
 	cp -r $(CHART_DIR) release/
+	./scripts/hardcode-security.sh release/$(CHART_DIR) $(CHART_DIR)/values_security.yaml
+	rm release/$(CHART_DIR)/values_security.yaml
 
 .PHONY: lint
 lint:

@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Usage: hardcode-security.sh <release_chart_dir> <values_security_yaml>
+# Reads all top-level keys from the security values file,
+# hardcodes them into templates and removes from values.yaml.
+# No script changes needed when adding/removing keys.
+
+CHART_DIR="$1"
+SEC_FILE="$2"
+DEPLOY="$CHART_DIR/templates/deployment.yaml"
+VALUES="$CHART_DIR/values.yaml"
+
+# Get all top-level keys from security file
+KEYS=$(yq 'keys | .[]' "$SEC_FILE")
+
+# For each key, replace its toYaml reference in the template
+cp "$DEPLOY" "$DEPLOY.tmp"
+for key in $KEYS; do
+  # Detect indentation from the toYaml line
+  indent=$(grep "toYaml .Values\.${key}" "$DEPLOY.tmp" | sed 's/\(^ *\).*/\1/' | head -1)
+  if [ -z "$indent" ]; then
+    continue
+  fi
+
+  # Extract the value and indent it
+  yq ".${key}" "$SEC_FILE" | sed "s/^/${indent}/" > /tmp/hardcode_val.txt
+
+  # Replace the toYaml line with hardcoded value
+  while IFS= read -r line; do
+    if [[ "$line" == *"toYaml .Values.${key}"* ]]; then
+      cat /tmp/hardcode_val.txt
+    else
+      printf '%s\n' "$line"
+    fi
+  done < "$DEPLOY.tmp" > "$DEPLOY.tmp2"
+  mv "$DEPLOY.tmp2" "$DEPLOY.tmp"
+done
+
+mv "$DEPLOY.tmp" "$DEPLOY"
+
+# Remove all hardcoded keys from values.yaml
+DEL_EXPR=""
+for key in $KEYS; do
+  DEL_EXPR="${DEL_EXPR} | del(.${key})"
+done
+DEL_EXPR="${DEL_EXPR#" | "}"
+yq "${DEL_EXPR}" "$VALUES" > "$VALUES.tmp"
+mv "$VALUES.tmp" "$VALUES"
+
+rm -f /tmp/hardcode_val.txt
