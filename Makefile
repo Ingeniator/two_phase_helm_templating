@@ -24,6 +24,13 @@ release:
 	./scripts/hardcode-security.sh release/$(CHART_DIR) $(CHART_DIR)/values_security.yaml
 	rm release/$(CHART_DIR)/values_security.yaml
 
+.PHONY: test
+test: package release
+	@helm template $(RELEASE_NAME) $(CHART_DIR) -f env/$(ENV).yaml > /tmp/helm_package.yaml
+	@helm template $(RELEASE_NAME) release/$(CHART_DIR) > /tmp/helm_release.yaml
+	@echo "=== Diff: package ($(ENV)) vs release (hardcoded) ==="
+	@diff /tmp/helm_package.yaml /tmp/helm_release.yaml || true
+
 .PHONY: lint
 lint:
 	helm lint $(CHART_DIR) -f env/$(ENV).yaml
