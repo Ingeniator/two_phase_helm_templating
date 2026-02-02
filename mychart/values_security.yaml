@@ -9,3 +9,5 @@ securityContext:
   capabilities:
     drop:
       - ALL
+
+secretVolumeDefaultMode: 0400

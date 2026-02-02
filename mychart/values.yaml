@@ -21,6 +21,8 @@ securityContext:
     drop:
       - ALL
 
+secretVolumeDefaultMode: 0400
+
 resources:
   limits:
     cpu: 100m

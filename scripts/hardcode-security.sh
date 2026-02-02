@@ -4,6 +4,7 @@ set -euo pipefail
 # Usage: hardcode-security.sh <release_chart_dir> <values_security_yaml>
 # Reads all top-level keys from the security values file,
 # hardcodes them into templates and removes from values.yaml.
+# Handles both toYaml blocks and inline {{ .Values.<key> }} scalars.
 # No script changes needed when adding/removing keys.
 
 CHART_DIR="$1"
@@ -14,27 +15,29 @@ VALUES="$CHART_DIR/values.yaml"
 # Get all top-level keys from security file
 KEYS=$(yq 'keys | .[]' "$SEC_FILE")
 
-# For each key, replace its toYaml reference in the template
 cp "$DEPLOY" "$DEPLOY.tmp"
 for key in $KEYS; do
-  # Detect indentation from the toYaml line
-  indent=$(grep "toYaml .Values\.${key}" "$DEPLOY.tmp" | sed 's/\(^ *\).*/\1/' | head -1)
-  if [ -z "$indent" ]; then
-    continue
+  VALUE=$(yq ".${key}" "$SEC_FILE")
+
+  if grep -q "toYaml .Values\.${key}" "$DEPLOY.tmp"; then
+    # Block value: replace toYaml line with indented YAML
+    indent=$(grep "toYaml .Values\.${key}" "$DEPLOY.tmp" | sed 's/\(^ *\).*/\1/' | head -1)
+    yq ".${key}" "$SEC_FILE" | sed "s/^/${indent}/" > /tmp/hardcode_val.txt
+
+    while IFS= read -r line; do
+      if [[ "$line" == *"toYaml .Values.${key}"* ]]; then
+        cat /tmp/hardcode_val.txt
+      else
+        printf '%s\n' "$line"
+      fi
+    done < "$DEPLOY.tmp" > "$DEPLOY.tmp2"
+    mv "$DEPLOY.tmp2" "$DEPLOY.tmp"
+
+  elif grep -q "\.Values\.${key}" "$DEPLOY.tmp"; then
+    # Scalar value: inline replace {{ .Values.<key> }} with literal value
+    sed "s/{{-\{0,1\} *\.Values\.${key} *-\{0,1\}}}/${VALUE}/g" "$DEPLOY.tmp" > "$DEPLOY.tmp2"
+    mv "$DEPLOY.tmp2" "$DEPLOY.tmp"
   fi
-
-  # Extract the value and indent it
-  yq ".${key}" "$SEC_FILE" | sed "s/^/${indent}/" > /tmp/hardcode_val.txt
-
-  # Replace the toYaml line with hardcoded value
-  while IFS= read -r line; do
-    if [[ "$line" == *"toYaml .Values.${key}"* ]]; then
-      cat /tmp/hardcode_val.txt
-    else
-      printf '%s\n' "$line"
-    fi
-  done < "$DEPLOY.tmp" > "$DEPLOY.tmp2"
-  mv "$DEPLOY.tmp2" "$DEPLOY.tmp"
 done
 
 mv "$DEPLOY.tmp" "$DEPLOY"

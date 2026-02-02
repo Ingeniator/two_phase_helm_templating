@@ -24,5 +24,14 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - containerPort: 80
+          volumeMounts:
+            - name: secret-vol
+              mountPath: /etc/secret
+              readOnly: true
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: secret-vol
+          secret:
+            secretName: my-secret
+            defaultMode: {{ .Values.secretVolumeDefaultMode }}
