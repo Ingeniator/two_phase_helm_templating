@@ -1,0 +1,5 @@
+# Files and templates excluded from release chart
+# Supports glob patterns (like .gitignore)
+# Paths are relative to the chart directory
+
+pvc.yaml
