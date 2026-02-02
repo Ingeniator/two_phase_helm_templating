@@ -52,3 +52,16 @@ yq "${DEL_EXPR}" "$VALUES" > "$VALUES.tmp"
 mv "$VALUES.tmp" "$VALUES"
 
 rm -f /tmp/hardcode_val.txt
+
+# Remove files matching .releaseignore patterns
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+RELEASEIGNORE="$SCRIPT_DIR/../.releaseignore"
+if [ -f "$RELEASEIGNORE" ]; then
+  while IFS= read -r pattern; do
+    [ -z "$pattern" ] && continue
+    case "$pattern" in \#*) continue;; esac
+    for f in $(find "$CHART_DIR" -name "$pattern" 2>/dev/null); do
+      rm -f "$f" && echo "Removed (releaseignore): $f"
+    done
+  done < "$RELEASEIGNORE"
+fi

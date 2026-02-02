@@ -23,16 +23,6 @@ release:
 	cp -r $(CHART_DIR) release/
 	./scripts/hardcode-security.sh release/$(CHART_DIR) $(CHART_DIR)/values_security.yaml
 	rm release/$(CHART_DIR)/values_security.yaml
-	@if [ -f .releaseignore ]; then \
-		cd release/$(CHART_DIR) && \
-		while IFS= read -r pattern; do \
-			[ -z "$$pattern" ] && continue; \
-			case "$$pattern" in \#*) continue;; esac; \
-			for f in $$(find . -name "$$pattern" 2>/dev/null); do \
-				rm -f "$$f" && echo "Removed (releaseignore): $$f"; \
-			done; \
-		done < ../../.releaseignore; \
-	fi
 
 .PHONY: test
 test: package release
