@@ -35,7 +35,12 @@ for key in $KEYS; do
 
   elif grep -q "\.Values\.${key}" "$DEPLOY.tmp"; then
     # Scalar value: inline replace {{ .Values.<key> }} with literal value
-    sed "s/{{-\{0,1\} *\.Values\.${key} *-\{0,1\}}}/${VALUE}/g" "$DEPLOY.tmp" > "$DEPLOY.tmp2"
+    while IFS= read -r line; do
+      while [[ "$line" =~ (.*)\{\{-?[[:space:]]*\.Values\.${key}[[:space:]]*-?\}\}(.*) ]]; do
+        line="${BASH_REMATCH[1]}${VALUE}${BASH_REMATCH[2]}"
+      done
+      printf '%s\n' "$line"
+    done < "$DEPLOY.tmp" > "$DEPLOY.tmp2"
     mv "$DEPLOY.tmp2" "$DEPLOY.tmp"
   fi
 done
