@@ -7,45 +7,66 @@ set -euo pipefail
 # Handles both toYaml blocks and inline {{ .Values.<key> }} scalars.
 # No script changes needed when adding/removing keys.
 
+if [ $# -ne 2 ]; then
+  echo "Usage: $0 <release_chart_dir> <values_security_yaml>" >&2
+  exit 1
+fi
+
 CHART_DIR="$1"
 SEC_FILE="$2"
-DEPLOY="$CHART_DIR/templates/deployment.yaml"
 VALUES="$CHART_DIR/values.yaml"
+
+TMPFILE=$(mktemp)
+trap 'rm -f "$TMPFILE"' EXIT
 
 # Get all top-level keys from security file
 KEYS=$(yq 'keys | .[]' "$SEC_FILE")
 
-cp "$DEPLOY" "$DEPLOY.tmp"
-for key in $KEYS; do
-  VALUE=$(yq ".${key}" "$SEC_FILE")
+for tmpl in "$CHART_DIR"/templates/*.yaml; do
+  [ -f "$tmpl" ] || continue
 
-  if grep -q "toYaml .Values\.${key}" "$DEPLOY.tmp"; then
-    # Block value: replace toYaml line with indented YAML
-    indent=$(grep "toYaml .Values\.${key}" "$DEPLOY.tmp" | sed 's/\(^ *\).*/\1/' | head -1)
-    yq ".${key}" "$SEC_FILE" | sed "s/^/${indent}/" > /tmp/hardcode_val.txt
+  cp "$tmpl" "$tmpl.tmp"
+  for key in $KEYS; do
+    VALUE=$(yq ".${key}" "$SEC_FILE")
 
-    while IFS= read -r line; do
-      if [[ "$line" == *"toYaml .Values.${key}"* ]]; then
-        cat /tmp/hardcode_val.txt
+    if grep -qE "toYaml \.Values\.${key}([^a-zA-Z0-9_]|\$)" "$tmpl.tmp"; then
+      # Parse nindent/indent value from the template line
+      indent_num=$(grep -E "toYaml \.Values\.${key}([^a-zA-Z0-9_]|\$)" "$tmpl.tmp" \
+        | sed -n 's/.*[|] *n\?indent \([0-9]*\).*/\1/p' | head -1)
+
+      if [ -z "$indent_num" ]; then
+        # Fall back to leading whitespace of the template line
+        indent=$(grep -E "toYaml \.Values\.${key}([^a-zA-Z0-9_]|\$)" "$tmpl.tmp" \
+          | sed 's/\(^ *\).*/\1/' | head -1)
       else
-        printf '%s\n' "$line"
+        indent=$(printf '%*s' "$indent_num" '')
       fi
-    done < "$DEPLOY.tmp" > "$DEPLOY.tmp2"
-    mv "$DEPLOY.tmp2" "$DEPLOY.tmp"
 
-  elif grep -q "\.Values\.${key}" "$DEPLOY.tmp"; then
-    # Scalar value: inline replace {{ .Values.<key> }} with literal value
-    while IFS= read -r line; do
-      while [[ "$line" =~ (.*)\{\{-?[[:space:]]*\.Values\.${key}[[:space:]]*-?\}\}(.*) ]]; do
-        line="${BASH_REMATCH[1]}${VALUE}${BASH_REMATCH[2]}"
-      done
-      printf '%s\n' "$line"
-    done < "$DEPLOY.tmp" > "$DEPLOY.tmp2"
-    mv "$DEPLOY.tmp2" "$DEPLOY.tmp"
-  fi
+      yq ".${key}" "$SEC_FILE" | sed "s/^/${indent}/" > "$TMPFILE"
+
+      while IFS= read -r line; do
+        if [[ "$line" == *"toYaml .Values.${key}"* ]]; then
+          cat "$TMPFILE"
+        else
+          printf '%s\n' "$line"
+        fi
+      done < "$tmpl.tmp" > "$tmpl.tmp2"
+      mv "$tmpl.tmp2" "$tmpl.tmp"
+
+    elif grep -qE "\.Values\.${key}([^a-zA-Z0-9_]|\$)" "$tmpl.tmp"; then
+      # Scalar value: inline replace {{ .Values.<key> }} with literal value
+      while IFS= read -r line; do
+        while [[ "$line" =~ (.*)\{\{-?[[:space:]]*\.Values\.${key}[[:space:]]*-?\}\}(.*) ]]; do
+          line="${BASH_REMATCH[1]}${VALUE}${BASH_REMATCH[2]}"
+        done
+        printf '%s\n' "$line"
+      done < "$tmpl.tmp" > "$tmpl.tmp2"
+      mv "$tmpl.tmp2" "$tmpl.tmp"
+    fi
+  done
+
+  mv "$tmpl.tmp" "$tmpl"
 done
-
-mv "$DEPLOY.tmp" "$DEPLOY"
 
 # Remove all hardcoded keys from values.yaml
 DEL_EXPR=""
@@ -55,8 +76,6 @@ done
 DEL_EXPR="${DEL_EXPR#" | "}"
 yq "${DEL_EXPR}" "$VALUES" > "$VALUES.tmp"
 mv "$VALUES.tmp" "$VALUES"
-
-rm -f /tmp/hardcode_val.txt
 
 # Remove files matching .releaseignore patterns
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

@@ -2,21 +2,19 @@ CHART_DIR := mychart
 RELEASE_NAME := myrelease
 ENV ?= dev
 
-.PHONY: template
+.PHONY: template template-debug package release test lint
+
 template:
 	helm template $(RELEASE_NAME) $(CHART_DIR) -f env/$(ENV).yaml
 
-.PHONY: template-debug
 template-debug:
 	helm template $(RELEASE_NAME) $(CHART_DIR) -f env/$(ENV).yaml --debug
 
-.PHONY: package
 package:
 	rm -rf out
 	mkdir -p out
 	helm template $(RELEASE_NAME) $(CHART_DIR) -f env/$(ENV).yaml > out/manifests.yaml
 
-.PHONY: release
 release:
 	rm -rf release
 	mkdir -p release
@@ -24,13 +22,10 @@ release:
 	./scripts/hardcode-security.sh release/$(CHART_DIR) $(CHART_DIR)/values_security.yaml
 	rm release/$(CHART_DIR)/values_security.yaml
 
-.PHONY: test
 test: package release
-	@helm template $(RELEASE_NAME) $(CHART_DIR) -f env/$(ENV).yaml > /tmp/helm_package.yaml
-	@helm template $(RELEASE_NAME) release/$(CHART_DIR) > /tmp/helm_release.yaml
+	@helm template $(RELEASE_NAME) release/$(CHART_DIR) > out/release-manifests.yaml
 	@echo "=== Diff: package ($(ENV)) vs release (hardcoded) ==="
-	@diff /tmp/helm_package.yaml /tmp/helm_release.yaml || true
+	@diff out/manifests.yaml out/release-manifests.yaml || true
 
-.PHONY: lint
 lint:
 	helm lint $(CHART_DIR) -f env/$(ENV).yaml

@@ -3,18 +3,6 @@ replicaCount: 3
 image:
   tag: "1.25"
 
-podSecurityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  fsGroup: 1000
-
-securityContext:
-  allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: true
-  capabilities:
-    drop:
-      - ALL
-
 resources:
   limits:
     cpu: 500m
